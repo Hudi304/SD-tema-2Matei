@@ -1,0 +1,82 @@
+image: maven:3-jdk-11
+stages:
+  - build
+  - test
+  - checkstyle
+  - deploy
+
+#build:
+#  stage: build
+#  image: maven:3-jdk-11
+#  script:
+#    - echo "Starting new build..."
+#    - mvn install -B
+#    - echo "Build complete."
+#    -
+build:
+  image: docker:latest
+  services:
+    - docker:dind
+  stage: build
+  script:
+    - docker login -u $CI_DEPLOY_USER -p $CI_DEPLOY_PASSWORD $CI_REGISTRY
+    - docker pull $CI_REGISTRY_IMAGE:latest || true
+    - docker build --cache-from $CI_REGISTRY_IMAGE:latest --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA --tag $CI_REGISTRY_IMAGE:latest .
+    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+    - docker push $CI_REGISTRY_IMAGE:latest
+
+
+test: 
+  stage: test  
+  image: maven:3-jdk-11
+  script:
+    - echo "Running unit tests... This will take about 60 seconds."
+    - mvn test && mvn jacoco:report
+    # - cat target/site/jacoco/index.html | grep -o '.*'
+  # coverege : "/Total.*?([0-9]{1,3})%/"
+
+checkstyle:  
+  stage: checkstyle  
+  image: maven:3-jdk-11
+  script:
+    - echo "Linting code... This will take about 10 seconds."
+    - mvn checkstyle:check
+
+#variables:
+#  DB_IP: ec2-54-170-163-224.eu-west-1.compute.amazonaws.com
+#  DB_PORT: 5432
+#  DB_USER: twxoidhxtwapbl
+#  DB_PASSWORD: dd71d64c40db192d3a26031e96931c77128c0830d3f525c832691219771d7b5b
+#  DB_NAME: d9ekep2h1n1ipp
+
+variables:
+  APP_NAME: spring-demo-hudi-back2021
+
+
+#deploy:
+#  stage: deploy
+#  image: ruby:latest
+#  script:
+#    - apt-get update -qy
+#    - apt-get install -y ruby-dev
+#    - gem install dpl
+#    - dpl --provider=heroku --app=spring-demo-hudi-back2021 --api-key=$HEROKU_API_KEY
+#  only:
+#    - main
+
+deploy:
+  image: docker:latest
+  services:
+    - docker:dind
+  stage: deploy
+  only:
+    - docker_production
+  script:
+    - docker login -u $CI_DEPLOY_USER -p $CI_DEPLOY_PASSWORD $CI_REGISTRY
+    - docker pull $CI_REGISTRY_IMAGE:latest
+    - docker tag $CI_REGISTRY_IMAGE:latest $HEROKU_REGISTRY_IMAGE:latest
+    - docker login --username=_ --password=$HEROKU_API_KEY $HEROKU_REGISTRY
+    - docker push $HEROKU_REGISTRY_IMAGE:latest
+    - docker run --rm -e HEROKU_API_KEY=$HEROKU_API_KEY wingrunr21/alpine-heroku-cli container:release web --app $APP_NAME
+
+

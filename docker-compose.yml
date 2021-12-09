@@ -1,0 +1,8 @@
+version: '3'
+
+services:
+
+  tomcat-db-api:
+    image: hudi304/sd-back:0.04
+    ports:
+      - "8080:8080"
